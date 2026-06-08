@@ -282,3 +282,69 @@ def export_attendance():
         media_type="text/csv",
         filename=filename
     )
+
+@app.post("/nfc/touch")
+def nfc_touch(data: Attendance):
+    conn = sqlite3.connect("attendance.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT student_id FROM students WHERE card_uid = ?",
+        (data.card_uid,)
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
+        conn.close()
+        return {
+            "success": False,
+            "message": "Card not registered"
+        }
+
+    student_id = result[0]
+
+    cursor.execute(
+        """
+        INSERT INTO attendance
+        (student_id, created_at)
+        VALUES (?, ?)
+        """,
+        (
+            student_id,
+            datetime.now().isoformat()
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "success": True,
+        "student_id": student_id
+    }
+
+@app.get("/nfc/logs")
+def get_nfc_logs():
+    conn = sqlite3.connect("attendance.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, student_id, created_at
+        FROM attendance
+        ORDER BY created_at DESC
+        LIMIT 20
+    """)
+
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    return [
+        {
+            "id": r[0],
+            "student_id": r[1],
+            "created_at": r[2]
+        }
+        for r in rows
+    ]
