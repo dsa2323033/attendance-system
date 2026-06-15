@@ -318,8 +318,6 @@ def nfc_touch(data: Attendance):
 
     student_id = result[0]
 
-<<<<<<< HEAD:backend/main.py
-=======
     # 今日の出席確認
     cursor.execute(
         """
@@ -341,7 +339,7 @@ def nfc_touch(data: Attendance):
             "student_id": student_id
         }
 
->>>>>>> d3f77f1 (update backend logic (nfc + students)):main.py
+
     cursor.execute(
         """
         INSERT INTO attendance

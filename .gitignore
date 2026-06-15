@@ -1,2 +1,4 @@
 venv/
-.DS_Storeattendance.db
+.DS_Store
+attendance.db
+attendance_export.csv
