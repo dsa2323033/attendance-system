@@ -5,6 +5,11 @@ from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
 import csv
 from fastapi.responses import FileResponse
+from fastapi import UploadFile, File
+from deepface import DeepFace
+import cv2
+import numpy as np
+import pickle
 
 
 app = FastAPI()
@@ -28,15 +33,26 @@ def init_db():
         student_id TEXT UNIQUE NOT NULL,
         card_uid TEXT UNIQUE
     )
-""")
+    """)
 
     # 出席テーブル
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
+    CREATE TABLE IF NOT EXISTS attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    # 顔特徴量テーブル
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS face_encodings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id TEXT NOT NULL,
+        encoding BLOB NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(student_id) REFERENCES students(student_id)
+    )
     """)
 
     conn.commit()
@@ -49,6 +65,7 @@ class Attendance(BaseModel):
 
 class Student(BaseModel):
     student_id: str
+    name: str
     card_uid: str
 
 @app.get("/")
@@ -61,22 +78,24 @@ def get_students():
     cursor = conn.cursor()
 
     cursor.execute(
-    """
-    SELECT student_id, card_uid
-    FROM students
-    """
-)
+        """
+        SELECT student_id, name, card_uid
+        FROM students
+        """
+    )
+
     rows = cursor.fetchall()
 
     conn.close()
 
     return [
-    {
-        "student_id": r[0],
-        "card_uid": r[1]
-    }
-    for r in rows
-]
+        {
+            "student_id": r[0],
+            "name": r[1],
+            "card_uid": r[2]
+        }
+        for r in rows
+    ]
 
 @app.get("/attendance/rate/{student_id}")
 def attendance_rate(student_id: str):
@@ -154,23 +173,34 @@ def add_student(data: Student):
 
     try:
         cursor.execute(
-    """
-    INSERT INTO students
-    (student_id, card_uid)
-    VALUES (?, ?)
-    """,
-    (
-        data.student_id,
-        data.card_uid
-    )
-)
+            """
+            INSERT INTO students
+            (student_id, name, card_uid)
+            VALUES (?, ?, ?)
+            """,
+            (
+                data.student_id,
+                data.name,
+                data.card_uid
+            )
+        )
+
         conn.commit()
+
     except sqlite3.IntegrityError:
         conn.close()
-        return {"success": False, "message": "Student already exists"}
+
+        return {
+            "success": False,
+            "message": "Student already exists"
+        }
 
     conn.close()
-    return {"success": True, "student_id": data.student_id}
+
+    return {
+        "success": True,
+        "student_id": data.student_id
+    }
 
 @app.get("/attendance")
 def get_attendance():
@@ -303,6 +333,28 @@ def nfc_touch(data: Attendance):
         }
 
     student_id = result[0]
+
+    # 今日の出席確認
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM attendance
+        WHERE student_id = ?
+        AND DATE(created_at) = DATE('now', 'localtime')
+        """,
+        (student_id,)
+    )
+
+    already_attended = cursor.fetchone()[0]
+
+    if already_attended > 0:
+        conn.close()
+        return {
+            "success": False,
+            "message": "Already attended today",
+            "student_id": student_id
+        }
+
 
     cursor.execute(
         """

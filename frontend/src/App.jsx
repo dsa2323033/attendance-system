@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import Camera from './components/Camera'
+import StudentPage from './pages/StudentPage'
 
 function App() {
   const [studentId, setStudentId] = useState('')
@@ -43,10 +45,18 @@ function App() {
   }
 
   useEffect(() => {
-  loadAttendance()
-  loadStudents()
-  loadRanking()
-}, [])
+  loadAttendance();
+  loadStudents();
+  loadRanking();
+
+  const interval = setInterval(() => {
+    loadAttendance();
+    loadStudents();
+    loadRanking();
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, []);
 
   const registerAttendance = async () => {
     const res = await fetch('http://127.0.0.1:8001/attendance', {
@@ -68,17 +78,24 @@ loadRanking()
   }
 
   const registerStudent = async () => {
-    const deleteStudent = async (studentId) => {
-  await fetch(
-    `http://127.0.0.1:8001/students/${studentId}`,
-    {
-      method: 'DELETE'
-    }
-  )
+  const res = await fetch('http://127.0.0.1:8001/students', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      student_id: newStudentId
+    })
+  })
+
+  const data = await res.json()
+
+  setMessage(data.message || '学生登録完了')
 
   loadStudents()
 }
-    const deleteAttendance = async (id) => {
+
+const deleteAttendance = async (id) => {
   await fetch(
     `http://127.0.0.1:8001/attendance/${id}`,
     {
@@ -88,33 +105,17 @@ loadRanking()
 
   loadAttendance()
 }
-    const res = await fetch('http://127.0.0.1:8001/students', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        student_id: newStudentId
-      })
-    })
 
-    const data = await res.json()
+const deleteStudent = async (studentId) => {
+  await fetch(
+    `http://127.0.0.1:8001/students/${studentId}`,
+    {
+      method: 'DELETE'
+    }
+  )
 
-    setMessage(data.message || '学生登録完了')
-
-    loadStudents()
-  }
-
-  const deleteStudent = async (studentId) => {
-    await fetch(
-      `http://127.0.0.1:8001/students/${studentId}`,
-      {
-        method: 'DELETE'
-      }
-    )
-
-    loadStudents()
-  }
+  loadStudents()
+}
 
   return (
     <div style={{ padding: '30px' }}>
@@ -167,37 +168,14 @@ loadRanking()
 
       <hr />
 
-      <h2>学生登録</h2>
-
-      <input
-        value={newStudentId}
-        onChange={(e) => setNewStudentId(e.target.value)}
-        placeholder="新しい学籍番号"
-      />
-
-      <button onClick={registerStudent}>
-        学生登録
-      </button>
-
-      <hr />
-
-      <h2>登録学生</h2>
-
-      <ul>
-  {students.map((student, index) => (
-    <li key={index}>
-      {student.student_id}
-
-      <button
-        onClick={() =>
-          deleteStudent(student.student_id)
-        }
-      >
-        削除
-      </button>
-    </li>
-  ))}
-</ul>
+      <StudentPage
+  students={students}
+  newStudentId={newStudentId}
+  setNewStudentId={setNewStudentId}
+  registerStudent={registerStudent}
+  deleteStudent={deleteStudent}
+/>
+  
 <hr />
 
 <h2>出席率ランキング</h2>
@@ -237,14 +215,21 @@ loadRanking()
       </button>
 
       {rateInfo && (
-        <div>
-          <p>学籍番号: {rateInfo.student_id}</p>
-          <p>出席回数: {rateInfo.attended}</p>
-          <p>総授業日数: {rateInfo.total_days}</p>
-          <p>出席率: {rateInfo.attendance_rate}%</p>
-        </div>
-      )}
-    </div>
+  <div>
+    <p>学籍番号: {rateInfo.student_id}</p>
+    <p>出席回数: {rateInfo.attended}</p>
+    <p>総授業日数: {rateInfo.total_days}</p>
+    <p>出席率: {rateInfo.attendance_rate}%</p>
+  </div>
+)}
+
+<hr />
+
+<h2>顔登録カメラ</h2>
+
+<Camera />
+
+</div>
   )
 }
 
