@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
@@ -10,6 +10,7 @@ from deepface import DeepFace
 import cv2
 import numpy as np
 import pickle
+import os
 
 
 app = FastAPI()
@@ -400,3 +401,21 @@ def get_nfc_logs():
         }
         for r in rows
     ]
+
+@app.post("/face/register")
+async def register_face(
+    student_id: str = Form(...),
+    image: UploadFile = File(...)
+):
+    os.makedirs("faces", exist_ok=True)
+
+    file_path = f"faces/{student_id}.jpg"
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(await image.read())
+
+    return {
+        "success": True,
+        "message": "Face image saved",
+        "file": file_path
+    }
