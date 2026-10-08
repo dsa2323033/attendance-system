@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
+from typing import Optional
 import sqlite3
 from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,7 @@ import cv2
 import numpy as np
 import pickle
 import os
-
+import pickle
 
 app = FastAPI()
 
@@ -61,8 +62,17 @@ def init_db():
 
 init_db()
 
+def cosine_similarity(a, b):
+    a = np.array(a)
+    b = np.array(b)
+
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+from pydantic import BaseModel
+
 class Attendance(BaseModel):
-    card_uid: str
+    card_uid: Optional[str] = None
+    student_id: Optional[str] = None
 
 class Student(BaseModel):
     student_id: str
@@ -250,26 +260,70 @@ from datetime import datetime
 
 @app.post("/attendance")
 def post_attendance(data: Attendance):
+
     conn = sqlite3.connect("attendance.db")
     cursor = conn.cursor()
 
-    # ① card_uid → student_id を検索
-    cursor.execute(
-        "SELECT student_id FROM students WHERE card_uid = ?",
-        (data.card_uid,)
-    )
-    result = cursor.fetchone()
+    # student_id を決定
+    if data.student_id:
+        student_id = data.student_id
 
-    if not result:
+    elif data.card_uid:
+        cursor.execute(
+            "SELECT student_id FROM students WHERE card_uid = ?",
+            (data.card_uid,)
+        )
+
+        result = cursor.fetchone()
+
+        if not result:
+            conn.close()
+            return {
+                "success": False,
+                "message": "Card not registered"
+            }
+
+        student_id = result[0]
+
+    else:
         conn.close()
-        return {"success": False, "message": "Card not registered"}
+        return {
+            "success": False,
+            "message": "No student information"
+        }
 
-    student_id = result[0]
-
-    # ② 出席登録
+    # 今日すでに出席済みか確認
     cursor.execute(
-        "INSERT INTO attendance (student_id, created_at) VALUES (?, ?)",
-        (student_id, datetime.now().isoformat())
+        """
+        SELECT COUNT(*)
+        FROM attendance
+        WHERE student_id = ?
+        AND DATE(created_at) = DATE('now','localtime')
+        """,
+        (student_id,)
+    )
+
+    already = cursor.fetchone()[0]
+
+    if already > 0:
+        conn.close()
+        return {
+            "success": False,
+            "message": "Already attended today",
+            "student_id": student_id
+        }
+
+    # 出席登録
+    cursor.execute(
+        """
+        INSERT INTO attendance
+        (student_id, created_at)
+        VALUES (?, ?)
+        """,
+        (
+            student_id,
+            datetime.now().isoformat()
+        )
     )
 
     conn.commit()
@@ -316,6 +370,7 @@ def export_attendance():
 
 @app.post("/nfc/touch")
 def nfc_touch(data: Attendance):
+
     conn = sqlite3.connect("attendance.db")
     cursor = conn.cursor()
 
@@ -335,41 +390,6 @@ def nfc_touch(data: Attendance):
 
     student_id = result[0]
 
-    # 今日の出席確認
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM attendance
-        WHERE student_id = ?
-        AND DATE(created_at) = DATE('now', 'localtime')
-        """,
-        (student_id,)
-    )
-
-    already_attended = cursor.fetchone()[0]
-
-    if already_attended > 0:
-        conn.close()
-        return {
-            "success": False,
-            "message": "Already attended today",
-            "student_id": student_id
-        }
-
-
-    cursor.execute(
-        """
-        INSERT INTO attendance
-        (student_id, created_at)
-        VALUES (?, ?)
-        """,
-        (
-            student_id,
-            datetime.now().isoformat()
-        )
-    )
-
-    conn.commit()
     conn.close()
 
     return {
@@ -406,7 +426,7 @@ def get_nfc_logs():
 async def register_face(
     student_id: str = Form(...),
     image: UploadFile = File(...)
-):
+    ):
     os.makedirs("faces", exist_ok=True)
 
     file_path = f"faces/{student_id}.jpg"
@@ -414,8 +434,85 @@ async def register_face(
     with open(file_path, "wb") as buffer:
         buffer.write(await image.read())
 
-    return {
+        embedding = DeepFace.represent(
+        img_path=file_path,
+        model_name="Facenet512",
+        detector_backend="skip"
+    )
+
+        print("Embedding length:", len(embedding[0]["embedding"]))
+        import pickle
+
+        embedding_data = pickle.dumps(embedding[0]["embedding"])
+
+        conn = sqlite3.connect("attendance.db")
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO face_encodings
+            (student_id, encoding)
+            VALUES (?, ?)
+            """,
+        (student_id, embedding_data)
+    )
+
+        conn.commit()
+        conn.close()
+
+
+        return {
         "success": True,
         "message": "Face image saved",
-        "file": file_path
+        "embedding_size": len(embedding[0]["embedding"])
+    }
+
+@app.post("/face/verify")
+async def verify_face(image: UploadFile = File(...)):
+    os.makedirs("faces", exist_ok=True)
+
+    temp_path = "faces/temp.jpg"
+
+    with open(temp_path, "wb") as buffer:
+        buffer.write(await image.read())
+
+    embedding = DeepFace.represent(
+        img_path=temp_path,
+        model_name="Facenet512",
+        detector_backend="skip"
+    )
+
+    input_embedding = embedding[0]["embedding"]
+
+    conn = sqlite3.connect("attendance.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT student_id, encoding
+        FROM face_encodings
+        """
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    best_student = None
+    best_score = -1
+
+    for student_id, encoding_blob in rows:
+        saved_embedding = pickle.loads(encoding_blob)
+
+        score = cosine_similarity(
+            input_embedding,
+            saved_embedding
+        )
+
+        if score > best_score:
+            best_score = score
+            best_student = student_id
+
+    return {
+        "student_id": best_student,
+        "score": float(best_score)
     }
