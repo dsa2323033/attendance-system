@@ -80,10 +80,9 @@ function Camera({ studentId }) {
 
         if (
          result.student_id &&
-         // TODO: Raspberry Pi実機連携後に有効化
-         // result.student_id === studentId &&
-         result.score >= 0.2
-         ){
+         result.student_id === studentId &&
+         result.score >= 0.1
+          ) {
 
 
           const attendanceResponse =
