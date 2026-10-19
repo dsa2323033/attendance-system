@@ -397,6 +397,82 @@ def nfc_touch(data: Attendance):
         "student_id": student_id
     }
 
+@app.post("/students/register")
+async def register_student(
+    card_uid: str = Form(...),
+    student_id: str = Form(...),
+    image: UploadFile = File(...)
+):
+    os.makedirs("faces", exist_ok=True)
+
+    conn = sqlite3.connect("attendance.db")
+    cursor = conn.cursor()
+
+    try:
+        # カードIDと学籍番号を登録
+        cursor.execute(
+            """
+            INSERT INTO students (student_id, card_uid)
+            VALUES (?, ?)
+            """,
+            (student_id, card_uid)
+        )
+
+        # 顔画像を保存
+        file_path = f"faces/{student_id}.jpg"
+
+        with open(file_path, "wb") as buffer:
+            buffer.write(await image.read())
+
+        # 既存の顔認証処理を使用してEmbeddingを作成
+        embedding = DeepFace.represent(
+            img_path=file_path,
+            model_name="Facenet512",
+            detector_backend="skip"
+        )
+
+        embedding_data = pickle.dumps(
+            embedding[0]["embedding"]
+        )
+
+        # 顔Embeddingを保存
+        cursor.execute(
+            """
+            INSERT INTO face_encodings
+            (student_id, encoding)
+            VALUES (?, ?)
+            """,
+            (student_id, embedding_data)
+        )
+
+        conn.commit()
+
+        return {
+            "success": True,
+            "student_id": student_id,
+            "card_uid": card_uid,
+            "message": "Student registered successfully"
+        }
+
+    except sqlite3.IntegrityError:
+        conn.rollback()
+
+        return {
+            "success": False,
+            "message": "Student ID or card UID is already registered"
+        }
+
+    except Exception as e:
+        conn.rollback()
+
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+    finally:
+        conn.close()
+
 @app.get("/nfc/logs")
 def get_nfc_logs():
     conn = sqlite3.connect("attendance.db")
@@ -515,4 +591,23 @@ async def verify_face(image: UploadFile = File(...)):
     return {
         "student_id": best_student,
         "score": float(best_score)
+    }
+
+@app.post("/face/upload")
+async def upload_face_image(
+    student_id: str = Form(...),
+    image: UploadFile = File(...)
+):
+    os.makedirs("faces", exist_ok=True)
+
+    file_path = f"faces/{student_id}_capture.jpg"
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(await image.read())
+
+    return {
+        "success": True,
+        "student_id": student_id,
+        "message": "Face image uploaded",
+        "file_path": file_path
     }
