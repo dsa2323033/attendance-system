@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import Camera from "./components/Camera";
-import FaceRegister from "./components/FaceRegister";
 import StudentPage from "./pages/StudentPage";
 
 function App() {
@@ -160,13 +158,8 @@ function App() {
         学生証確認
       </button>
 
-      <p>{message}</p>
+      <p>{message}</p>  
 
-      <hr />
-
-      <h2>顔認証</h2>
-
-      <Camera studentId={studentId} />
 
       <hr />
 
@@ -223,10 +216,6 @@ function App() {
       />
 
       <hr />
-
-      <h2>顔登録</h2>
-
-      <FaceRegister />
 
       <hr />
 
