@@ -1,6 +1,21 @@
 import { useState, useEffect } from "react";
 import StudentPage from "./pages/StudentPage";
 
+const cardStyle = {
+  padding: "24px",
+  borderRadius: "16px",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+  color: "#334155",
+  minWidth: 0,
+};
+
+const cardColors = {
+  students: "#eff6ff",
+  attendance: "#f0fdf4",
+  absent: "#fef2f2",
+  rate: "#f5f3ff",
+};
+
 function App() {
   const [studentId, setStudentId] = useState("");
   const [newStudentId, setNewStudentId] = useState("");
@@ -140,9 +155,131 @@ function App() {
     loadStudents();
   };
 
+    // 本日の出席者を集計
+  const today = new Date();
+
+  const todayAttendance = attendanceList.filter((item) => {
+    if (!item.created_at) return false;
+
+    const date = new Date(item.created_at);
+
+    return (
+      !isNaN(date.getTime()) &&
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate()
+    );
+  });
+
+  const totalStudents = students.length;
+  const attendedStudents = new Set(
+    todayAttendance.map((item) => item.student_id)
+  ).size;
+
+  const absentStudents = Math.max(
+    totalStudents - attendedStudents,
+    0
+  );
+
+  const attendanceRate =
+    totalStudents > 0
+      ? Math.round((attendedStudents / totalStudents) * 100)
+      : 0;
+
   return (
-    <div style={{ padding: "30px" }}>
-      <h1>出席管理システム</h1>
+        <div style={{
+      padding: "30px",
+      maxWidth: "1200px",
+      margin: "0 auto",
+      backgroundColor: "#f5f7fb",
+      minHeight: "100vh"
+    }}>
+
+      <h1 style={{ color: "#1e293b" }}>
+        出席管理システム
+      </h1>
+
+      <h2 style={{ color: "#334155" }}>
+        ダッシュボード
+      </h2>
+
+      <p style={{ color: "#64748b" }}>
+        本日の出席状況を確認できます。
+      </p>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: "20px",
+        marginTop: "25px",
+        marginBottom: "35px"
+      }}>
+
+        <div style={{
+  ...cardStyle,
+  backgroundColor: cardColors.students
+}}>
+  <p style={{ color: "#64748b", margin: 0 }}>
+    👨‍🎓 登録学生数
+  </p>
+  <h2 style={{
+    fontSize: "32px",
+    marginBottom: 0,
+    color: "#2563eb"
+  }}>
+    {totalStudents} 人
+  </h2>
+</div>
+
+<div style={{
+  ...cardStyle,
+  backgroundColor: cardColors.attendance
+}}>
+  <p style={{ color: "#64748b", margin: 0 }}>
+    ✅ 本日の出席者数
+  </p>
+  <h2 style={{
+    fontSize: "32px",
+    marginBottom: 0,
+    color: "#16a34a"
+  }}>
+    {attendedStudents} 人
+  </h2>
+</div>
+
+<div style={{
+  ...cardStyle,
+  backgroundColor: cardColors.absent
+}}>
+  <p style={{ color: "#64748b", margin: 0 }}>
+    ❌ 本日の欠席者数
+  </p>
+  <h2 style={{
+    fontSize: "32px",
+    marginBottom: 0,
+    color: "#dc2626"
+  }}>
+    {absentStudents} 人
+  </h2>
+</div>
+
+<div style={{
+  ...cardStyle,
+  backgroundColor: cardColors.rate
+}}>
+  <p style={{ color: "#64748b", margin: 0 }}>
+    📊 本日の出席率
+  </p>
+  <h2 style={{
+    fontSize: "32px",
+    marginBottom: 0,
+    color: "#7c3aed"
+  }}>
+    {attendanceRate} %
+  </h2>
+</div>
+
+      </div>
 
       <hr />
 
